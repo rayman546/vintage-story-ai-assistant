@@ -1,0 +1,36 @@
+{
+  "name": "vintage-story-ai-assistant-frontend",
+  "version": "0.1.0",
+  "description": "Frontend for Vintage Story AI Assistant",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.1.0",
+    "@tauri-apps/plugin-shell": "^2.1.0",
+    "@tauri-apps/plugin-fs": "^2.1.0",
+    "@tauri-apps/plugin-http": "^2.1.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "lucide-react": "^0.263.1",
+    "clsx": "^2.1.1",
+    "react-markdown": "^9.0.0",
+    "remark-gfm": "^4.0.0",
+    "react-syntax-highlighter": "^15.5.0"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.1.0",
+    "@types/react": "^18.3.17",
+    "@types/react-dom": "^18.3.5",
+    "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.4.21",
+    "postcss": "^8.4.45",
+    "tailwindcss": "^3.4.16",
+    "typescript": "^5.7.3",
+    "vite": "^6.0.7"
+  }
+}

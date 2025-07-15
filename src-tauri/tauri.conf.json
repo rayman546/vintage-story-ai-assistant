@@ -1,0 +1,28 @@
+{
+  "$schema": "https://schema.tauri.app/config/2.0.0",
+  "productName": "Vintage Story AI Assistant",
+  "version": "0.1.0",
+  "identifier": "com.vintagestory.ai-assistant",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build",
+    "devUrl": "http://localhost:1420",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "security": {
+      "csp": "default-src 'self' data: filesystem: asset: https://asset.localhost; script-src 'self' 'unsafe-inline' data: filesystem: asset: https://asset.localhost; style-src 'self' 'unsafe-inline' data: filesystem: asset: https://asset.localhost; img-src 'self' data: filesystem: asset: https://asset.localhost blob:; font-src 'self' data: filesystem: asset: https://asset.localhost"
+    },
+    "windows": [
+      {
+        "width": 1200,
+        "height": 800,
+        "resizable": true,
+        "title": "Vintage Story AI Assistant",
+        "center": true,
+        "minWidth": 800,
+        "minHeight": 600
+      }
+    ]
+  }
+}

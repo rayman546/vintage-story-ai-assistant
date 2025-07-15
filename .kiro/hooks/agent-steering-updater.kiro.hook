@@ -1,0 +1,18 @@
+{
+  "enabled": true,
+  "name": "Agent Steering Updater",
+  "description": "Automatically updates agent steering configuration whenever persistent commands like 'Always use sequential thinking' or 'Make sure you always use up to date info' are given",
+  "version": "1",
+  "when": {
+    "type": "fileEdited",
+    "patterns": [
+      ".kiro/steering.md",
+      ".kiro/persistent_commands.md",
+      ".kiro/agent_config.md"
+    ]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "A persistent command or agent steering configuration has been updated. Please review the changes and ensure the agent behavior aligns with the new steering instructions. Pay special attention to any 'Always' commands that should be consistently applied across all interactions."
+  }
+}
