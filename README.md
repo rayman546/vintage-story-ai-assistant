@@ -78,7 +78,7 @@ vintage-story-ai-assistant/
 
 ### 🚧 In Progress
 - Wiki scraping and processing
-- Vector database integration (LanceDB)
+- Vector database integration (sled)
 - Embedding service implementation
 - RAG pipeline
 
@@ -94,9 +94,22 @@ vintage-story-ai-assistant/
 - **Frontend**: React 18 + TypeScript + Tailwind CSS
 - **Backend**: Rust + Tauri
 - **LLM Engine**: Ollama
-- **Vector Database**: LanceDB
+- **Vector Database**: sled (embedded key-value store)
 - **Build Tool**: Vite
 - **Package Manager**: npm
+
+## Technology Decisions
+
+### Vector Database: sled vs LanceDB
+
+**Decision**: Using sled as the embedded vector database.
+
+**Rationale**:
+- **Existing Implementation**: sled is already integrated and functional in the codebase with working vector storage operations
+- **Stability Focus**: During the critical fixes phase, maintaining existing working components reduces risk
+- **Simplicity**: sled provides sufficient embedded key-value storage for the current RAG system requirements
+- **Dependency Management**: Keeps the dependency footprint smaller and build process simpler
+- **Future Flexibility**: The vector database interface is abstracted, allowing for future migration to LanceDB if advanced vector operations become necessary
 
 ## Contributing
 
