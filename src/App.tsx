@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { 
   MessageCircle, Settings, Cpu, Download, Database, RefreshCw, 
@@ -7,50 +7,13 @@ import {
 import { MessageRenderer } from "./components/MessageRenderer";
 import { Settings as SettingsPanel } from "./components/Settings";
 import { ChatHistory } from "./components/ChatHistory";
+import { ErrorTester } from "./components/ErrorTester";
+import { 
+  ChatMessage, ChatSession, ChatResponse, OllamaStatus, 
+  WikiStatus, SystemStatus 
+} from "./types";
 
-interface ChatMessage {
-  id: string;
-  content: string;
-  role: string;
-  timestamp: string;
-}
 
-interface ChatResponse {
-  message: ChatMessage;
-  context_used: string[];
-}
-
-interface OllamaStatus {
-  is_running: boolean;
-  is_installed: boolean;
-  version?: string;
-  models: ModelInfo[];
-}
-
-interface ModelInfo {
-  name: string;
-  size: number;
-  digest: string;
-  details: {
-    parameter_size: string;
-    quantization_level: string;
-    family: string;
-  };
-}
-
-interface WikiStatus {
-  last_update?: string;
-  total_pages: number;
-  is_updating: boolean;
-  pages_scraped: number;
-  errors_encountered: number;
-}
-
-interface SystemStatus {
-  ollama_ready: boolean;
-  wiki_ready: boolean;
-  error_message?: string;
-}
 
 function App() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -69,33 +32,15 @@ function App() {
   const [temperature, setTemperature] = useState(0.7);
   const [maxContextChunks, setMaxContextChunks] = useState(5);
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
-  const [chatSessions, setChatSessions] = useState<any[]>([]);
+  const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const messagesEndRef = useRef<null | HTMLDivElement>(null);
 
-  useEffect(() => {
-    initializeSystem();
+  const scrollToBottom = useCallback(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, []);
 
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
-
-  useEffect(() => {
-    // Auto-save current session when messages change
-    if (currentSessionId && messages.length > 0) {
-      setChatSessions(prev => prev.map(session => 
-        session.id === currentSessionId 
-          ? { ...session, messages } 
-          : session
-      ));
-    }
-  }, [messages, currentSessionId]);
-
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
-  const initializeSystem = async () => {
+  const initializeSystem = useCallback(async () => {
     setIsInitializing(true);
     try {
       // Ensure Ollama is ready
@@ -112,7 +57,7 @@ function App() {
       });
       
       // Set default model if available
-      if (ollamaReady.models.length > 0) {
+      if (ollamaReady.models && ollamaReady.models.length > 0) {
         setSelectedModel(ollamaReady.models[0].name);
       }
     } catch (error) {
@@ -125,9 +70,9 @@ function App() {
     } finally {
       setIsInitializing(false);
     }
-  };
+  }, []);
 
-  const updateWikiContent = async () => {
+  const updateWikiContent = useCallback(async () => {
     try {
       await invoke<string>("update_wiki_content");
       // Refresh status after update
@@ -137,8 +82,28 @@ function App() {
     } catch (error) {
       console.error("Failed to update wiki content:", error);
     }
-  };
-  const sendMessage = async () => {
+  }, []);
+
+  useEffect(() => {
+    initializeSystem();
+  }, [initializeSystem]);
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages, scrollToBottom]);
+
+  useEffect(() => {
+    // Auto-save current session when messages change
+    if (currentSessionId && messages.length > 0) {
+      setChatSessions(prev => prev.map(session => 
+        session.id === currentSessionId 
+          ? { ...session, messages } 
+          : session
+      ));
+    }
+  }, [messages, currentSessionId]);
+
+  const sendMessage = useCallback(async () => {
     if (!inputValue.trim() || !systemStatus.ollama_ready) return;
 
     const userMessage: ChatMessage = {
@@ -155,6 +120,7 @@ function App() {
     try {
       const response = await invoke<ChatResponse>("send_message", {
         message: inputValue,
+        model: selectedModel,
       });
       setMessages(prev => [...prev, response.message]);
     } catch (error) {
@@ -169,7 +135,7 @@ function App() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [inputValue, systemStatus.ollama_ready, selectedModel]);
 
   if (isInitializing) {
     return (
@@ -244,7 +210,7 @@ function App() {
           </div>
 
           {/* Model Selection */}
-          {ollamaStatus?.models.length > 0 && (
+          {ollamaStatus?.models && ollamaStatus.models.length > 0 && (
             <div className="mb-6">
               <h2 className="text-sm font-semibold text-gray-600 mb-3">Model</h2>
               <div className="relative">
@@ -261,6 +227,13 @@ function App() {
                 </select>
                 <ChevronDown className="absolute right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 pointer-events-none" />
               </div>
+            </div>
+          )}
+
+          {/* Error Boundary Test (Development Only) */}
+          {process.env.NODE_ENV === 'development' && (
+            <div className="mb-6">
+              <ErrorTester onTriggerError={() => {}} />
             </div>
           )}
         </div>

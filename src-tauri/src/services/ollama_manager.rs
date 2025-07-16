@@ -36,6 +36,25 @@ pub struct OllamaManager {
     process: Option<Child>,
 }
 
+impl Drop for OllamaManager {
+    fn drop(&mut self) {
+        if let Some(mut child) = self.process.take() {
+            info!("Cleaning up Ollama process on drop");
+            match child.kill() {
+                Ok(_) => {
+                    info!("Successfully terminated Ollama process");
+                    // Wait for the process to fully terminate
+                    match child.wait() {
+                        Ok(status) => info!("Ollama process exited with status: {}", status),
+                        Err(e) => warn!("Error waiting for Ollama process to exit: {}", e),
+                    }
+                }
+                Err(e) => error!("Failed to kill Ollama process: {}", e),
+            }
+        }
+    }
+}
+
 impl OllamaManager {
     pub async fn new() -> Self {
         let config = OllamaConfig::default();
@@ -180,7 +199,14 @@ impl OllamaManager {
         }
     }
     
+    pub fn set_model(&mut self, model_name: String) {
+        info!("Switching to model: {}", model_name);
+        self.config.model_name = model_name;
+    }
+    
     pub async fn generate_response(&self, prompt: &str) -> AppResult<String> {
+        info!("Generating response with model: {}", self.config.model_name);
+        
         let url = format!("http://{}:{}/api/generate", self.config.host, self.config.port);
         let payload = serde_json::json!({
             "model": self.config.model_name,
@@ -188,18 +214,42 @@ impl OllamaManager {
             "stream": false
         });
         
+        info!("Sending request to Ollama: {}", url);
+        
         let response = self.client
             .post(&url)
             .json(&payload)
+            .timeout(Duration::from_secs(60)) // Add timeout
             .send()
-            .await?;
+            .await
+            .map_err(|e| AppError::OllamaError(format!("Failed to send request to Ollama: {}", e)))?;
         
-        let result: serde_json::Value = response.json().await?;
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            return Err(AppError::OllamaError(format!("Ollama API error ({}): {}", status, error_text)));
+        }
         
-        Ok(result["response"]
+        let result: serde_json::Value = response.json().await
+            .map_err(|e| AppError::OllamaError(format!("Failed to parse Ollama response: {}", e)))?;
+        
+        // Check for error in response
+        if let Some(error) = result["error"].as_str() {
+            return Err(AppError::OllamaError(format!("Ollama returned error: {}", error)));
+        }
+        
+        let response_text = result["response"]
             .as_str()
             .unwrap_or("No response generated")
-            .to_string())
+            .to_string();
+        
+        if response_text.is_empty() || response_text == "No response generated" {
+            warn!("Empty or default response from Ollama. Full response: {:?}", result);
+            return Err(AppError::OllamaError("Ollama returned empty response".to_string()));
+        }
+        
+        info!("Successfully generated response ({} chars)", response_text.len());
+        Ok(response_text)
     }
     
     pub async fn ensure_available(&mut self) -> AppResult<()> {
@@ -226,6 +276,35 @@ impl OllamaManager {
         Ok(())
     }
     
+    pub fn shutdown(&mut self) -> AppResult<()> {
+        if let Some(mut child) = self.process.take() {
+            info!("Shutting down Ollama process");
+            match child.kill() {
+                Ok(_) => {
+                    info!("Successfully terminated Ollama process");
+                    // Wait for the process to fully terminate with timeout
+                    match child.wait() {
+                        Ok(status) => {
+                            info!("Ollama process exited with status: {}", status);
+                            Ok(())
+                        }
+                        Err(e) => {
+                            warn!("Error waiting for Ollama process to exit: {}", e);
+                            Err(AppError::OllamaError(format!("Failed to wait for process termination: {}", e)))
+                        }
+                    }
+                }
+                Err(e) => {
+                    error!("Failed to kill Ollama process: {}", e);
+                    Err(AppError::OllamaError(format!("Failed to terminate process: {}", e)))
+                }
+            }
+        } else {
+            info!("No Ollama process to shutdown");
+            Ok(())
+        }
+    }
+    
     async fn install_ollama(&self) -> AppResult<()> {
         info!("Installing Ollama for platform: {}", std::env::consts::OS);
         
@@ -249,26 +328,31 @@ impl OllamaManager {
         let temp_dir = env::temp_dir();
         let installer_path = temp_dir.join("OllamaSetup.exe");
         
-        // Download the installer
-        info!("Downloading Ollama installer from: {}", download_url);
-        let response = self.client
-            .get(download_url)
-            .send()
-            .await
-            .map_err(|e| AppError::OllamaError(format!("Failed to download installer: {}", e)))?;
+        // Retry mechanism for downloads
+        const MAX_RETRIES: usize = 3;
+        let mut last_error = None;
         
-        if !response.status().is_success() {
-            return Err(AppError::OllamaError(
-                format!("Failed to download installer: HTTP {}", response.status())
-            ));
+        for attempt in 1..=MAX_RETRIES {
+            info!("Downloading Ollama installer from: {} (attempt {}/{})", download_url, attempt, MAX_RETRIES);
+            
+            match self.download_installer_with_verification(download_url, &installer_path).await {
+                Ok(_) => break,
+                Err(e) => {
+                    warn!("Download attempt {} failed: {}", attempt, e);
+                    last_error = Some(e);
+                    
+                    if attempt < MAX_RETRIES {
+                        info!("Retrying download in 2 seconds...");
+                        sleep(Duration::from_secs(2)).await;
+                    }
+                }
+            }
         }
         
-        // Save installer to temp file
-        let installer_bytes = response.bytes().await
-            .map_err(|e| AppError::OllamaError(format!("Failed to read installer: {}", e)))?;
-        
-        std::fs::write(&installer_path, installer_bytes)
-            .map_err(|e| AppError::OllamaError(format!("Failed to save installer: {}", e)))?;
+        // If all retries failed, return the last error
+        if let Some(error) = last_error {
+            return Err(error);
+        }
         
         info!("Running Ollama installer");
         
@@ -279,8 +363,9 @@ impl OllamaManager {
             .map_err(|e| AppError::OllamaError(format!("Failed to run installer: {}", e)))?;
         
         if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
             return Err(AppError::OllamaError(
-                "Ollama installation failed".to_string()
+                format!("Ollama installation failed: {}", stderr)
             ));
         }
         
@@ -292,6 +377,81 @@ impl OllamaManager {
         // Give it a moment to finish installation
         sleep(Duration::from_secs(3)).await;
         
+        Ok(())
+    }
+    
+    async fn download_installer_with_verification(&self, url: &str, path: &std::path::Path) -> AppResult<()> {
+        // Download the installer
+        let response = self.client
+            .get(url)
+            .send()
+            .await
+            .map_err(|e| AppError::OllamaError(format!("Failed to download installer: {}", e)))?;
+        
+        if !response.status().is_success() {
+            return Err(AppError::OllamaError(
+                format!("Failed to download installer: HTTP {}", response.status())
+            ));
+        }
+        
+        // Get content length for verification
+        let content_length = response.content_length();
+        
+        // Read installer bytes
+        let installer_bytes = response.bytes().await
+            .map_err(|e| AppError::OllamaError(format!("Failed to read installer: {}", e)))?;
+        
+        // Verify download integrity
+        self.verify_installer_integrity(&installer_bytes, content_length)?;
+        
+        // Store length before moving bytes
+        let bytes_len = installer_bytes.len();
+        
+        // Save installer to temp file
+        std::fs::write(path, installer_bytes)
+            .map_err(|e| AppError::OllamaError(format!("Failed to save installer: {}", e)))?;
+        
+        info!("Installer downloaded and verified successfully ({} bytes)", bytes_len);
+        Ok(())
+    }
+    
+    fn verify_installer_integrity(&self, bytes: &[u8], expected_length: Option<u64>) -> AppResult<()> {
+        // Basic size check - installer should be at least 1MB
+        const MIN_INSTALLER_SIZE: usize = 1024 * 1024; // 1MB
+        const MAX_INSTALLER_SIZE: usize = 500 * 1024 * 1024; // 500MB
+        
+        if bytes.len() < MIN_INSTALLER_SIZE {
+            return Err(AppError::OllamaError(
+                format!("Downloaded installer appears corrupted (too small: {} bytes, expected at least {} bytes)", 
+                    bytes.len(), MIN_INSTALLER_SIZE)
+            ));
+        }
+        
+        if bytes.len() > MAX_INSTALLER_SIZE {
+            return Err(AppError::OllamaError(
+                format!("Downloaded installer appears corrupted (too large: {} bytes, expected at most {} bytes)", 
+                    bytes.len(), MAX_INSTALLER_SIZE)
+            ));
+        }
+        
+        // Verify content length matches if provided
+        if let Some(expected) = expected_length {
+            if bytes.len() != expected as usize {
+                return Err(AppError::OllamaError(
+                    format!("Downloaded installer size mismatch: got {} bytes, expected {} bytes", 
+                        bytes.len(), expected)
+                ));
+            }
+        }
+        
+        // Check for executable signature (Windows PE header)
+        if bytes.len() >= 2 && &bytes[0..2] != b"MZ" {
+            return Err(AppError::OllamaError(
+                "Downloaded file does not appear to be a valid Windows executable".to_string()
+            ));
+        }
+        
+        info!("Installer integrity verification passed");
         Ok(())
     }    
     async fn install_macos(&self) -> AppResult<()> {
@@ -380,18 +540,76 @@ impl OllamaManager {
             .send()
             .await?;
         
-        // Process streaming response
-        while let Some(chunk_bytes) = response.chunk().await? {
-            if let Ok(text) = std::str::from_utf8(&chunk_bytes) {
-                // Parse each line as JSON
-                for line in text.lines() {
-                    if let Ok(json) = serde_json::from_str::<serde_json::Value>(line) {
-                        if let Some(status) = json["status"].as_str() {
-                            let progress = json["completed"].as_u64().unwrap_or(0) as f32 
-                                / json["total"].as_u64().unwrap_or(100) as f32;
-                            progress_callback(progress, status.to_string());
+        if !response.status().is_success() {
+            return Err(AppError::OllamaError(
+                format!("Failed to start model download: HTTP {}", response.status())
+            ));
+        }
+        
+        // Process streaming response with robust error handling
+        let mut parse_errors = 0;
+        const MAX_PARSE_ERRORS: usize = 10;
+        
+        while let Some(chunk_result) = response.chunk().await.transpose() {
+            match chunk_result {
+                Ok(chunk_bytes) => {
+                    match std::str::from_utf8(&chunk_bytes) {
+                        Ok(text) => {
+                            // Parse each line as JSON with error recovery
+                            for line in text.lines() {
+                                let line = line.trim();
+                                if line.is_empty() {
+                                    continue;
+                                }
+                                
+                                match serde_json::from_str::<serde_json::Value>(line) {
+                                    Ok(json) => {
+                                        // Reset parse error counter on successful parse
+                                        parse_errors = 0;
+                                        
+                                        if let Some(status) = json["status"].as_str() {
+                                            let total = json["total"].as_u64().unwrap_or(100) as f32;
+                                            let completed = json["completed"].as_u64().unwrap_or(0) as f32;
+                                            let progress = if total > 0.0 { completed / total } else { 0.0 };
+                                            progress_callback(progress.clamp(0.0, 1.0), status.to_string());
+                                        }
+                                        
+                                        // Check for error in the JSON response
+                                        if let Some(error) = json["error"].as_str() {
+                                            return Err(AppError::OllamaError(
+                                                format!("Ollama download error: {}", error)
+                                            ));
+                                        }
+                                    }
+                                    Err(e) => {
+                                        parse_errors += 1;
+                                        warn!("Failed to parse streaming response line: '{}' - Error: {}", line, e);
+                                        
+                                        // If we get too many parse errors, something is seriously wrong
+                                        if parse_errors >= MAX_PARSE_ERRORS {
+                                            return Err(AppError::OllamaError(
+                                                format!("Too many JSON parse errors ({}), aborting download", parse_errors)
+                                            ));
+                                        }
+                                        
+                                        // Continue processing other lines
+                                        continue;
+                                    }
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            warn!("Failed to decode chunk as UTF-8: {}", e);
+                            // Continue processing, this might be a partial UTF-8 sequence
+                            continue;
                         }
                     }
+                }
+                Err(e) => {
+                    error!("Error reading response chunk: {}", e);
+                    return Err(AppError::OllamaError(
+                        format!("Network error during download: {}", e)
+                    ));
                 }
             }
         }

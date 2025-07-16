@@ -83,7 +83,7 @@ impl WikiService {
             "/index.php?title=Blocks",
             "/index.php?title=Items", 
             "/index.php?title=Crafting",
-            "/index.php?title=Getting_Started",
+            "/index.php?title=Getting_started",
             "/index.php?title=Knapping",
             "/index.php?title=Clay_forming",
         ];

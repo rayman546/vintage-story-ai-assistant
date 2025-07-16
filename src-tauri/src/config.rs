@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use std::fs;
 use dirs;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -96,13 +97,68 @@ impl Default for ChatConfig {
 
 impl AppConfig {
     pub fn load() -> crate::errors::AppResult<Self> {
-        // Load from config file or return default
-        // TODO: Implement config file loading
-        Ok(Self::default())
+        let config_path = Self::get_config_path();
+        
+        if config_path.exists() {
+            let content = fs::read_to_string(&config_path)
+                .map_err(|e| crate::errors::AppError::ConfigError(
+                    format!("Failed to read config file: {}", e)
+                ))?;
+            
+            let config: AppConfig = serde_json::from_str(&content)
+                .map_err(|e| crate::errors::AppError::ConfigError(
+                    format!("Failed to parse config file: {}", e)
+                ))?;
+            
+            Ok(config)
+        } else {
+            // Create default config and save it
+            let default_config = Self::default();
+            
+            // Create config directory if it doesn't exist
+            if let Some(parent) = config_path.parent() {
+                fs::create_dir_all(parent)
+                    .map_err(|e| crate::errors::AppError::ConfigError(
+                        format!("Failed to create config directory: {}", e)
+                    ))?;
+            }
+            
+            default_config.save()?;
+            Ok(default_config)
+        }
     }
     
     pub fn save(&self) -> crate::errors::AppResult<()> {
-        // TODO: Implement config file saving
+        let config_path = Self::get_config_path();
+        
+        // Create directory if it doesn't exist
+        if let Some(parent) = config_path.parent() {
+            fs::create_dir_all(parent)
+                .map_err(|e| crate::errors::AppError::ConfigError(
+                    format!("Failed to create config directory: {}", e)
+                ))?;
+        }
+        
+        // Serialize config with pretty formatting
+        let content = serde_json::to_string_pretty(self)
+            .map_err(|e| crate::errors::AppError::ConfigError(
+                format!("Failed to serialize config: {}", e)
+            ))?;
+        
+        // Atomic write: write to temporary file first, then rename
+        let temp_path = config_path.with_extension("tmp");
+        
+        fs::write(&temp_path, content)
+            .map_err(|e| crate::errors::AppError::ConfigError(
+                format!("Failed to write temporary config file: {}", e)
+            ))?;
+        
+        // Atomic rename to final location
+        fs::rename(&temp_path, &config_path)
+            .map_err(|e| crate::errors::AppError::ConfigError(
+                format!("Failed to finalize config file: {}", e)
+            ))?;
+        
         Ok(())
     }
     
@@ -110,5 +166,9 @@ impl AppConfig {
         dirs::data_dir()
             .unwrap_or_else(|| PathBuf::from("."))
             .join("vintage-story-ai-assistant")
+    }
+    
+    fn get_config_path() -> PathBuf {
+        Self::get_data_dir().join("config.json")
     }
 }

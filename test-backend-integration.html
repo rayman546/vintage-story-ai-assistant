@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Backend Integration Test</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .test-button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 0;
+        }
+        .test-button:hover {
+            background: #0056b3;
+        }
+        .test-button:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+        }
+        .results {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 6px;
+            font-family: monospace;
+            white-space: pre-wrap;
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .success { color: #28a745; }
+        .error { color: #dc3545; }
+        .info { color: #17a2b8; }
+        h1 { color: #333; text-align: center; }
+        h2 { color: #666; border-bottom: 2px solid #eee; padding-bottom: 10px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 Backend Integration Test</h1>
+        <p>This test verifies that all Tauri backend commands are working correctly and that frontend-backend communication is functioning.</p>
+        
+        <h2>Test Categories</h2>
+        <ul>
+            <li><strong>Command Existence:</strong> Verify all Tauri commands are registered</li>
+            <li><strong>Response Format:</strong> Check that responses have correct structure</li>
+            <li><strong>Input Validation:</strong> Test that validation functions work</li>
+            <li><strong>Error Handling:</strong> Verify proper error responses</li>
+        </ul>
+
+        <button id="runTests" class="test-button">🚀 Run Backend Integration Tests</button>
+        <button id="clearResults" class="test-button">🗑️ Clear Results</button>
+        
+        <div id="results" class="results" style="display: none;"></div>
+    </div>
+
+    <script>
+        // Check if we're running in Tauri
+        if (!window.__TAURI__) {
+            document.getElementById('results').style.display = 'block';
+            document.getElementById('results').innerHTML = '❌ ERROR: This test must be run inside the Tauri application.\n\nTo run this test:\n1. Start the application with: npm run tauri dev\n2. Navigate to this HTML file in the application';
+            document.getElementById('runTests').disabled = true;
+        }
+
+        const { invoke } = window.__TAURI__?.core || {};
+        
+        async function runBackendTests() {
+            const resultsDiv = document.getElementById('results');
+            const runButton = document.getElementById('runTests');
+            
+            resultsDiv.style.display = 'block';
+            resultsDiv.innerHTML = '🧪 Starting Backend Integration Tests...\n\n';
+            runButton.disabled = true;
+            
+            const results = {
+                passed: 0,
+                failed: 0,
+                tests: []
+            };
+
+            // Helper function to run a test
+            async function runTest(testName, testFn) {
+                try {
+                    resultsDiv.innerHTML += `⏳ Testing: ${testName}\n`;
+                    await testFn();
+                    resultsDiv.innerHTML += `✅ PASSED: ${testName}\n`;
+                    results.passed++;
+                    results.tests.push({ name: testName, status: 'PASSED' });
+                } catch (error) {
+                    resultsDiv.innerHTML += `❌ FAILED: ${testName} - ${error.message}\n`;
+                    results.failed++;
+                    results.tests.push({ name: testName, status: 'FAILED', error: error.message });
+                }
+                resultsDiv.scrollTop = resultsDiv.scrollHeight;
+            }
+
+            // Test 1: System Status Command
+            await runTest('get_system_status command', async () => {
+                const status = await invoke('get_system_status');
+                if (!status || typeof status !== 'object') {
+                    throw new Error('Invalid system status response');
+                }
+                if (!status.app_version) {
+                    throw new Error('Missing app_version in system status');
+                }
+            });
+
+            // Test 2: Ollama Status Command
+            await runTest('ensure_ollama_ready command', async () => {
+                const status = await invoke('ensure_ollama_ready');
+                if (!status || typeof status !== 'object') {
+                    throw new Error('Invalid ollama status response');
+                }
+                if (typeof status.is_running !== 'boolean') {
+                    throw new Error('Missing or invalid is_running field');
+                }
+                if (typeof status.is_installed !== 'boolean') {
+                    throw new Error('Missing or invalid is_installed field');
+                }
+                if (!Array.isArray(status.models)) {
+                    throw new Error('Missing or invalid models array');
+                }
+            });
+
+            // Test 3: Wiki Status Command
+            await runTest('get_wiki_status command', async () => {
+                const status = await invoke('get_wiki_status');
+                if (!status || typeof status !== 'object') {
+                    throw new Error('Invalid wiki status response');
+                }
+                if (typeof status.total_pages !== 'number') {
+                    throw new Error('Missing or invalid total_pages field');
+                }
+                if (typeof status.is_updating !== 'boolean') {
+                    throw new Error('Missing or invalid is_updating field');
+                }
+            });
+
+            // Test 4: Input Validation (should fail with invalid input)
+            await runTest('send_message validation', async () => {
+                try {
+                    await invoke('send_message', { message: '', model: 'test' });
+                    throw new Error('Should have failed with empty message');
+                } catch (error) {
+                    if (!error.message.includes('empty') && !error.message.includes('whitespace')) {
+                        throw new Error('Validation error message incorrect: ' + error.message);
+                    }
+                    // This is expected - validation should reject empty messages
+                }
+            });
+
+            // Test 5: Model Name Validation (should fail with invalid model name)
+            await runTest('model name validation', async () => {
+                try {
+                    await invoke('send_message', { message: 'test message', model: '@invalid-model@' });
+                    throw new Error('Should have failed with invalid model name');
+                } catch (error) {
+                    if (!error.message.includes('invalid') && !error.message.includes('character')) {
+                        throw new Error('Model validation error message incorrect: ' + error.message);
+                    }
+                    // This is expected - validation should reject invalid model names
+                }
+            });
+
+            // Print results
+            resultsDiv.innerHTML += '\n📊 Test Results Summary:\n';
+            resultsDiv.innerHTML += `✅ Passed: ${results.passed}\n`;
+            resultsDiv.innerHTML += `❌ Failed: ${results.failed}\n`;
+            resultsDiv.innerHTML += `📈 Success Rate: ${((results.passed / (results.passed + results.failed)) * 100).toFixed(1)}%\n`;
+            
+            if (results.failed > 0) {
+                resultsDiv.innerHTML += '\n❌ Failed Tests:\n';
+                results.tests.filter(t => t.status === 'FAILED').forEach(test => {
+                    resultsDiv.innerHTML += `  - ${test.name}: ${test.error}\n`;
+                });
+            } else {
+                resultsDiv.innerHTML += '\n🎉 All tests passed! Backend integration is working correctly.\n';
+            }
+
+            runButton.disabled = false;
+            resultsDiv.scrollTop = resultsDiv.scrollHeight;
+        }
+
+        function clearResults() {
+            document.getElementById('results').style.display = 'none';
+            document.getElementById('results').innerHTML = '';
+        }
+
+        document.getElementById('runTests').addEventListener('click', runBackendTests);
+        document.getElementById('clearResults').addEventListener('click', clearResults);
+    </script>
+</body>
+</html>

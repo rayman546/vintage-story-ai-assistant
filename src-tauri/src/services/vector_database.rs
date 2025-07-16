@@ -40,15 +40,21 @@ impl VectorDatabase {
                 if e.to_string().contains("lock") || e.to_string().contains("locked") {
                     warn!("Database appears to be locked, attempting cleanup...");
                     
-                    // Try to remove lock files
-                    let lock_file = db_path.join("db");
-                    if lock_file.exists() {
-                        if let Err(cleanup_err) = std::fs::remove_dir_all(&lock_file) {
-                            warn!("Failed to cleanup lock file: {}", cleanup_err);
+                    // Try to remove the entire database directory to clear locks
+                    if db_path.exists() {
+                        if let Err(cleanup_err) = std::fs::remove_dir_all(&db_path) {
+                            warn!("Failed to cleanup database directory: {}", cleanup_err);
+                        } else {
+                            info!("Cleaned up locked database directory");
+                        }
+                        
+                        // Recreate the directory
+                        if let Err(create_err) = std::fs::create_dir_all(&db_path) {
+                            warn!("Failed to recreate database directory: {}", create_err);
                         }
                     }
                     
-                    // Try opening again
+                    // Try opening again with a fresh database
                     sled::open(&db_path)
                         .map_err(|e2| AppError::StorageError(format!("Failed to open sled database after cleanup: {}", e2)))?
                 } else {

@@ -1,29 +1,16 @@
-import React from 'react';
-import { MessageCircle, Clock, Trash2, Download, Upload } from 'lucide-react';
-
-interface ChatSession {
-  id: string;
-  title: string;
-  timestamp: string;
-  messages: ChatMessage[];
-}
-
-interface ChatMessage {
-  id: string;
-  content: string;
-  role: string;
-  timestamp: string;
-}
+import React, { useRef } from 'react';
+import { X, Trash2, Download, Upload, Plus } from 'lucide-react';
+import { ChatSession } from '../types';
 
 interface ChatHistoryProps {
   isOpen: boolean;
   onClose: () => void;
   sessions: ChatSession[];
   currentSessionId: string | null;
-  onSelectSession: (sessionId: string) => void;
-  onDeleteSession: (sessionId: string) => void;
+  onSelectSession: (id: string) => void;
+  onDeleteSession: (id: string) => void;
   onNewSession: () => void;
-  onExportSession: (sessionId: string) => void;
+  onExportSession: (id: string) => void;
   onImportSession: (file: File) => void;
 }
 
@@ -38,94 +25,80 @@ export const ChatHistory: React.FC<ChatHistoryProps> = ({
   onExportSession,
   onImportSession,
 }) => {
-  const fileInputRef = React.useRef<HTMLInputElement>(null);
-
-  const handleImport = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      onImportSession(file);
-    }
-  };
-
-  const formatDate = (timestamp: string) => {
-    const date = new Date(timestamp);
-    const today = new Date();
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
-
-    if (date.toDateString() === today.toDateString()) {
-      return `Today ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
-    } else if (date.toDateString() === yesterday.toDateString()) {
-      return `Yesterday ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
-    } else {
-      return date.toLocaleDateString([], { 
-        month: 'short', 
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
-      });
-    }
-  };
-
-  const getSessionTitle = (session: ChatSession) => {
-    if (session.title) return session.title;
-    
-    // Generate title from first user message
-    const firstUserMessage = session.messages.find(m => m.role === 'user');
-    if (firstUserMessage) {
-      const title = firstUserMessage.content.slice(0, 50);
-      return title.length < firstUserMessage.content.length ? `${title}...` : title;
-    }
-    
-    return 'New Chat';
-  };
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   if (!isOpen) return null;
 
+  const handleImport = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      onImportSession(file);
+      e.target.value = '';
+    }
+  };
+
   return (
-    <div className="fixed inset-y-0 left-0 w-80 bg-white shadow-xl z-50 flex flex-col">
-      <div className="p-4 border-b">
-        <div className="flex justify-between items-center">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg shadow-xl w-96 max-h-[80vh] overflow-hidden">
+        <div className="flex items-center justify-between p-4 border-b">
           <h2 className="text-lg font-semibold">Chat History</h2>
-          <button
-            onClick={onClose}
-            className="p-1 hover:bg-gray-100 rounded-lg"
-          >
-            ×
+          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded">
+            <X className="w-5 h-5" />
           </button>
         </div>
-      </div>
+        
+        <div className="p-4">
+          <div className="flex space-x-2 mb-4">
+            <button
+              onClick={onNewSession}
+              className="flex items-center space-x-1 px-3 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
+            >
+              <Plus className="w-4 h-4" />
+              <span>New</span>
+            </button>
+            <button
+              onClick={handleImport}
+              className="flex items-center space-x-1 px-3 py-2 border rounded-lg hover:bg-gray-50"
+            >
+              <Upload className="w-4 h-4" />
+              <span>Import</span>
+            </button>
+          </div>
+          
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".json"
+            onChange={handleFileChange}
+            className="hidden"
+          />
+        </div>
 
-      <div className="flex-1 overflow-y-auto">
-        <div className="p-2">
-          <button
-            onClick={onNewSession}
-            className="w-full p-3 mb-2 bg-blue-50 hover:bg-blue-100 rounded-lg text-blue-700 font-medium transition-colors"
-          >
-            + New Chat
-          </button>
-
-          <div className="space-y-2">
-            {sessions.map((session) => (
+        <div className="max-h-96 overflow-y-auto">
+          {sessions.length === 0 ? (
+            <div className="p-4 text-center text-gray-500">
+              No chat history yet
+            </div>
+          ) : (
+            sessions.map((session) => (
               <div
                 key={session.id}
-                className={`p-3 rounded-lg cursor-pointer transition-colors ${
-                  currentSessionId === session.id
-                    ? 'bg-blue-50 border border-blue-200'
-                    : 'hover:bg-gray-50 border border-transparent'
+                className={`p-3 border-b hover:bg-gray-50 cursor-pointer ${
+                  currentSessionId === session.id ? 'bg-blue-50' : ''
                 }`}
                 onClick={() => onSelectSession(session.id)}
               >
                 <div className="flex items-start justify-between">
                   <div className="flex-1 min-w-0">
-                    <h3 className="font-medium text-sm truncate">
-                      {getSessionTitle(session)}
-                    </h3>
-                    <p className="text-xs text-gray-500 flex items-center mt-1">
-                      <Clock className="w-3 h-3 mr-1" />
-                      {formatDate(session.timestamp)}
+                    <h3 className="font-medium truncate">{session.title}</h3>
+                    <p className="text-sm text-gray-500">
+                      {new Date(session.timestamp).toLocaleDateString()}
                     </p>
-                    <p className="text-xs text-gray-400 mt-1">
+                    <p className="text-xs text-gray-400">
                       {session.messages.length} messages
                     </p>
                   </div>
@@ -136,43 +109,24 @@ export const ChatHistory: React.FC<ChatHistoryProps> = ({
                         onExportSession(session.id);
                       }}
                       className="p-1 hover:bg-gray-200 rounded"
-                      title="Export chat"
                     >
-                      <Download className="w-4 h-4 text-gray-600" />
+                      <Download className="w-4 h-4" />
                     </button>
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
                         onDeleteSession(session.id);
                       }}
-                      className="p-1 hover:bg-red-100 rounded"
-                      title="Delete chat"
+                      className="p-1 hover:bg-red-100 rounded text-red-600"
                     >
-                      <Trash2 className="w-4 h-4 text-red-600" />
+                      <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
                 </div>
               </div>
-            ))}
-          </div>
+            ))
+          )}
         </div>
-      </div>
-
-      <div className="p-4 border-t">
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".json"
-          onChange={handleImport}
-          className="hidden"
-        />
-        <button
-          onClick={() => fileInputRef.current?.click()}
-          className="w-full p-2 bg-gray-100 hover:bg-gray-200 rounded-lg flex items-center justify-center text-sm font-medium transition-colors"
-        >
-          <Upload className="w-4 h-4 mr-2" />
-          Import Chat
-        </button>
       </div>
     </div>
   );
