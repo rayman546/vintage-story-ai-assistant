@@ -9,7 +9,58 @@
     "devUrl": "http://localhost:1420",
     "frontendDist": "../dist"
   },
-  "plugins": {},
+  "plugins": {
+    "fs": {
+      "scope": [
+        "$APP/*",
+        "$APPCONFIG/*",
+        "$APPDATA/*",
+        "$APPLOCALDATA/*",
+        "$APPCache/*",
+        "$APPLog/*",
+        "$DESKTOP/*",
+        "$DOCUMENT/*",
+        "$DOWNLOAD/*",
+        "$EXE/*",
+        "$HOME/*",
+        "$TEMP/*"
+      ]
+    },
+    "http": {
+      "scope": [
+        "http://127.0.0.1:11434/*",
+        "https://ollama.ai/*"
+      ]
+    },
+    "shell": {
+      "scope": [
+        {
+          "name": "run-ollama",
+          "cmd": "ollama",
+          "args": true
+        },
+        {
+          "name": "run-install-script",
+          "cmd": "sh",
+          "args": true
+        },
+        {
+          "name": "run-windows-installer",
+          "cmd": "powershell",
+          "args": [
+            "-Command",
+            "Start-Process",
+            "-FilePath",
+            "$TEMP\\OllamaSetup.exe",
+            "-ArgumentList",
+            "/S",
+            "-Wait"
+          ]
+        }
+      ],
+      "open": true
+    }
+  },
   "app": {
     "security": {
       "csp": "default-src 'self' data: filesystem: asset: https://asset.localhost http://127.0.0.1:11434; script-src 'self' 'unsafe-inline' data: filesystem: asset: https://asset.localhost; style-src 'self' 'unsafe-inline' data: filesystem: asset: https://asset.localhost; img-src 'self' data: filesystem: asset: https://asset.localhost blob:; font-src 'self' data: filesystem: asset: https://asset.localhost"

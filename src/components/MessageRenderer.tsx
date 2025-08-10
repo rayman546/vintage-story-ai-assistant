@@ -10,6 +10,10 @@ interface MessageRendererProps {
 }
 
 export const MessageRenderer: React.FC<MessageRendererProps> = ({ content, isUser }) => {
+  if (!content) {
+    return null;
+  }
+
   if (isUser) {
     return <div className="whitespace-pre-wrap">{content}</div>;
   }
@@ -18,10 +22,9 @@ export const MessageRenderer: React.FC<MessageRendererProps> = ({ content, isUse
     <ReactMarkdown
       remarkPlugins={[remarkGfm]}
       components={{
-        code({ className, children, ...props }: any) {
+        code({ className, children, ...props }: { inline?: boolean; className?: string; children: React.ReactNode }) {
           const match = /language-(\w+)/.exec(className || '');
-          const inline = !match;
-          return !inline ? (
+          return match ? (
             <SyntaxHighlighter
               style={oneDark as any}
               language={match[1]}

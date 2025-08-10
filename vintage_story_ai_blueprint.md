@@ -25,7 +25,7 @@ The **Local Vintage Story AI Assistant** is a standalone, offline-first desktop 
 | **Backend Runtime** | Rust (via Tauri) | • Memory safety and performance<br>• Excellent concurrency handling<br>• Native integration with system APIs<br>• Strong ecosystem for HTTP clients and JSON processing |
 | **Local LLM Engine** | Ollama | • Cross-platform LLM runtime<br>• Simple REST API interface<br>• Efficient model management and caching<br>• Support for quantized models (reduced resource usage)<br>• Active community and regular updates |
 | **Recommended Models** | • `phi-3:mini` (3.8B params)<br>• `llama3.2:3b`<br>• `qwen2.5:3b` | • Optimized for resource-constrained environments<br>• Good performance on knowledge tasks<br>• Fast inference times<br>• Manageable download sizes (2-4GB) |
-| **Vector Database** | LanceDB | • Zero external dependencies<br>• Native Rust integration<br>• Excellent performance for similarity search<br>• Compact storage format<br>• ACID compliance for data integrity |
+| **Vector Database** | sled | • Embedded key-value store, no external dependencies<br>• Pure Rust implementation<br>• Sufficient for current RAG needs<br>• Low resource usage<br>• Abstracted interface for future upgrades |
 | **Embedding Model** | `sentence-transformers/all-MiniLM-L6-v2` | • Lightweight (80MB) with good performance<br>• Optimized for semantic similarity tasks<br>• Well-established in RAG applications<br>• Fast inference on CPU |
 | **Web Scraping** | `scraper` + `reqwest` (Rust) | • Native Rust HTML parsing<br>• Robust error handling<br>• Async/await support for concurrent scraping<br>• Built-in rate limiting capabilities |
 | **Packaging** | Tauri Bundler | • Native installer generation (MSI, DMG, AppImage)<br>• Code signing integration<br>• Auto-updater support<br>• Minimal external dependencies |
@@ -37,7 +37,7 @@ sequenceDiagram
     participant User
     participant Frontend as React Frontend
     participant Backend as Tauri Backend
-    participant VectorDB as LanceDB
+    participant VectorDB as sled
     participant Ollama as Ollama LLM
     participant Wiki as VS Wiki Cache
 
