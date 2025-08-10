@@ -48,6 +48,23 @@ async fn main() {
     chat_service.set_ollama_manager(ollama_manager.clone());
     let chat_service = Arc::new(Mutex::new(chat_service));
 
+    // Clone the wiki_service Arc to move into the background thread
+    let wiki_service_clone = wiki_service.clone();
+
+    // Spawn a background task to update wiki content
+    tokio::spawn(async move {
+        info!("Spawning background task for wiki update.");
+        // Wait a little bit before starting the scrape to allow the UI to load
+        tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+
+        let mut service = wiki_service_clone.lock().await;
+        if let Err(e) = service.update_content().await {
+            error!("Failed to update wiki content in background: {}", e);
+        } else {
+            info!("Background wiki update task completed.");
+        }
+    });
+
     let app_state = AppState {
         ollama_manager,
         wiki_service,
